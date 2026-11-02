@@ -44,6 +44,20 @@ async def handle_command(chat_id, text):
 
 async def handle_callback(cb):
     cb_id = cb.get("id")
+    data = cb.get("data", "")
+    chat_id = cb.get("message", {}).get("chat", {}).get("id")
+    if data.startswith("bought:"):
+        mint = data.split(":", 1)[1]
+        import db
+        conn = db.get_db()
+        conn.execute("INSERT INTO positions (mint, name, entry_price, size_usd, mode, status, ts) VALUES (?,?,?,?,?,?,?)",
+                    (mint, mint[:8], 0, 0, "PAPER", "open", int(time.time())))
+        conn.commit()
+        conn.close()
+        await send_msg(chat_id, f"Position opened for {mint[:8]}...")
+    elif data.startswith("skip:"):
+        mint = data.split(":", 1)[1]
+        await send_msg(chat_id, f"Skipped {mint[:8]}...")
     async with httpx.AsyncClient(timeout=15) as client:
         await client.post(f"https://api.telegram.org/bot{TG_TOKEN}/answerCallbackQuery", json={"callback_query_id": cb_id})
 

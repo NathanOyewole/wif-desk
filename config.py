@@ -1,6 +1,6 @@
 import os
-RH_CHAIN_ID = 4663
-RH_RPC_URL = os.getenv("RH_RPC_URL", "https://rpc.mainnet.chain.robinhood.com")
+RH_CHAIN_ID = 46630
+RH_RPC_URL = os.getenv("RH_RPC_URL", "https://rpc.testnet.chain.robinhood.com")
 WIF_TOKEN = "0xE49A1C3033EcC6b804bc423021D3F71F1A3e0F9B"
 WIF_BURN_ADDRESS = "0x000000000000000000000000000000000000dead"
 WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
