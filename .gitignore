@@ -1,2 +1,3 @@
 wif_desk.db
 .env
+__pycache__/
