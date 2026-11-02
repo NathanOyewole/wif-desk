@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from config import *
 from db import init_db
-import scanner, auditor, analyst, executor, risk, bus as bus_mod
+import scanner, auditor, analyst, executor, risk, bus as bus_mod, telegram
 
 async def pipeline():
     while True:
@@ -28,6 +28,7 @@ async def main():
         scanner.scan_loop(),
         risk.risk_loop(),
         pipeline(),
+        telegram.poll_telegram(),
     )
 
 if __name__ == "__main__":
