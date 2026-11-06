@@ -264,12 +264,45 @@ async def handle_command(chat_id, text):
             decimals = swap.wif_decimals()
             bal = swap.wif_balance()
             amount_wei = int(amount * (10 ** decimals))
-            if amount_wei <= 0 or amount_wei > bal:
-                await send_msg(chat_id, f"Insufficient $wif balance: {bal / (10 ** decimals):.4f}")
+            # If not enough $wif but we have ETH, swap ETH -> $wif first
+            if amount_wei > bal:
+                eth_bal = wallet.balance_wei()
+                if eth_bal <= 0:
+                    await send_msg(chat_id, f"Insufficient $wif balance: {bal / (10 ** decimals):.4f} (and no ETH to swap)")
+                    return
+                # swap up to the USD equivalent of our ETH balance (leave a little for gas)
+                import dex
+                wif_pair = dex.get_best_pair(swap.WIF_ADDRESS)
+                price = float(wif_pair.get("priceUsd", 0) or 0) if wif_pair else 0
+                if price <= 0:
+                    await send_msg(chat_id, "Could not fetch $wif price for swap.")
+                    return
+                eth_price = float(wif_pair.get("priceNative", 0) or 0)
+                eth_usd = (price / eth_price) if eth_price > 0 else 0
+                if eth_usd <= 0:
+                    await send_msg(chat_id, "Could not determine ETH price.")
+                    return
+                spend_usd = min(amount / price, (eth_bal / 10**18) * eth_usd * 0.95)
+                if spend_usd <= 0:
+                    await send_msg(chat_id, "Not enough ETH to buy $wif.")
+                    return
+                spend_eth = int((spend_usd / eth_usd) * 10**18)
+                await send_msg(chat_id, f"Swapping ${spend_usd:.2f} of ETH → $wif...")
+                try:
+                    h, pool, fee = swap.swap_eth_for_token(swap.WIF_ADDRESS, spend_eth)
+                    wallet.wait_receipt(h)
+                except Exception as e:
+                    await send_msg(chat_id, f"Swap failed: {e}")
+                    return
+                bal = swap.wif_balance()
+            burn_wei = min(amount_wei, bal)
+            if burn_wei <= 0:
+                await send_msg(chat_id, "No $wif to burn after swap.")
                 return
-            tx = swap.burn_wif(amount_wei)
-            await send_msg(chat_id, f"Burned {amount:,.2f} $wif → 0x...dEaD\nTx: {tx.hex()}")
-            db.log_activity("burn", swap.WIF_ADDRESS, "burn", f"{amount} $wif · {tx.hex()}")
+            tx = swap.burn_wif(burn_wei)
+            burned = burn_wei / (10 ** decimals)
+            await send_msg(chat_id, f"Burned {burned:,.2f} $wif → 0x...dEaD\nTx: {tx.hex()}")
+            db.log_activity("burn", swap.WIF_ADDRESS, "burn", f"{burned} $wif · {tx.hex()}")
         except Exception as e:
             await send_msg(chat_id, f"Burn failed: {e}")
     elif cmd == "/wallet":
