@@ -301,8 +301,10 @@ async def handle_command(chat_id, text):
                 return
             tx = swap.burn_wif(burn_wei)
             burned = burn_wei / (10 ** decimals)
-            await send_msg(chat_id, f"Burned {burned:,.2f} $wif → 0x...dEaD\nTx: {tx.hex()}")
-            db.log_activity("burn", swap.WIF_ADDRESS, "burn", f"{burned} $wif · {tx.hex()}")
+            tx_hash = tx.hex()
+            explorer = f"https://robinhoodchain.blockscout.com/tx/{tx_hash}"
+            await send_msg(chat_id, f"Burned {burned:,.2f} $wif → 0x...dEaD\nTx: {tx_hash}\nVerify: {explorer}")
+            db.log_activity("burn", swap.WIF_ADDRESS, "burn", f"{burned} $wif · {tx_hash}")
         except Exception as e:
             await send_msg(chat_id, f"Burn failed: {e}")
     elif cmd == "/wallet":
