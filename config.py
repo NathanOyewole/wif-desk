@@ -1,3 +1,12 @@
+import os as _os
+_env_path = _os.path.join(_os.path.dirname(__file__), '.env')
+if _os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                _os.environ.setdefault(_k, _v)
 import os
 RH_CHAIN_ID = 46630
 RH_RPC_URL = os.getenv("RH_RPC_URL", "https://rpc.testnet.chain.robinhood.com")

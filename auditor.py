@@ -17,7 +17,7 @@ async def audit(address, scanner_data):
 
     # Layer 2: Has liquidity
     if passed:
-        pair = await get_best_pair(address)
+        pair = get_best_pair(address)
         liq = float(pair.get("liquidity", {}).get("usd", 0) or 0) if pair else 0
         min_liq = DEFAULT_SETTINGS.get("min_liquidity", 1000)
         l2 = liq >= min_liq

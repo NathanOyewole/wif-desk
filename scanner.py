@@ -26,39 +26,69 @@ async def get_logs(from_block, to_block):
         r = await client.post(RH_RPC_URL, json=payload)
         return r.json().get("result", [])
 
+def _push_token(token, pair=None):
+    """Feed a token into the 5-agent pipeline (Scanner -> bus -> Auditor)."""
+    name = token.get("name") or "Unknown"
+    symbol = token.get("symbol") or "???"
+    address = token.get("address")
+    if not address:
+        return None
+    price = token.get("priceUsd") or (pair or {}).get("priceUsd") or "0"
+    liq = token.get("liquidity_usd") or (pair or {}).get("liquidity", {}).get("usd", 0)
+    db.save_coin(address, name, symbol, liq, str(price))
+    bus_mod.bus.scanner_to_auditor.put_nowait({
+        "mint": address, "name": name, "symbol": symbol,
+        "liquidity_usd": liq, "price_usd": str(price), "pair": pair,
+    })
+    return address
+
+async def scan_once(blocks_back=200):
+    """Scan for tokens: DexScreener (primary) + on-chain PoolCreated logs (secondary).
+    Every token found is pushed into the pipeline. Returns list of token addresses."""
+    found = []
+    # --- Primary source: DexScreener (live Robinhood Chain tokens) ---
+    try:
+        import dex
+        tokens = dex.search_tokens("robinhood", 12)
+        for t in tokens:
+            addr = _push_token(t)
+            if addr:
+                found.append(addr)
+    except Exception as e:
+        print(f"Scanner (dexscreener) error: {e}")
+
+    # --- Secondary source: on-chain PoolCreated logs ---
+    global LAST_BLOCK
+    try:
+        current = await get_latest_block()
+        start = max(LAST_BLOCK + 1, current - blocks_back)
+        if start <= current:
+            logs = await get_logs(start, current)
+            for log in logs:
+                if len(log.get("topics", [])) >= 3:
+                    token0 = "0x" + log["topics"][1][-40:]
+                    token1 = "0x" + log["topics"][2][-40:]
+                    for token in [token0, token1]:
+                        if token.lower() == WETH.lower() or token.lower() == WIF_TOKEN.lower():
+                            continue
+                        is_contract = await eth_get_code(token)
+                        if is_contract:
+                            from rpc import get_token_name, get_token_symbol
+                            name = await get_token_name(token)
+                            symbol = await get_token_symbol(token)
+                            print(f"Scanner: new pool detected, {name} ({symbol}) {token}")
+                            if _push_token({"address": token, "name": name, "symbol": symbol}):
+                                found.append(token)
+            LAST_BLOCK = current
+    except Exception as e:
+        print(f"Scanner error: {e}")
+    return found
+
 async def scan_loop():
     global LAST_BLOCK
-    print("Scanner starting (Robinhood Chain - Uniswap V3 pools)...")
+    print("Scanner starting (Robinhood Chain - DexScreener + Uniswap V3 pools)...")
     LAST_BLOCK = await get_latest_block()
     print(f"Starting from block {LAST_BLOCK}")
     while True:
-        try:
-            current = await get_latest_block()
-            if current > LAST_BLOCK:
-                logs = await get_logs(LAST_BLOCK + 1, current)
-                for log in logs:
-                    # Parse PoolCreated event
-                    # topics[1] = token0, topics[2] = token1, topics[3] = fee
-                    if len(log.get("topics", [])) >= 3:
-                        token0 = "0x" + log["topics"][1][-40:]
-                        token1 = "0x" + log["topics"][2][-40:]
-                        # One of these is likely a new token, the other is WETH or $wif
-                        for token in [token0, token1]:
-                            if token.lower() == WETH.lower() or token.lower() == WIF_TOKEN.lower():
-                                continue
-                            # Check if it's a contract
-                            is_contract = await eth_get_code(token)
-                            if is_contract:
-                                from rpc import get_token_name, get_token_symbol
-                                name = await get_token_name(token)
-                                symbol = await get_token_symbol(token)
-                                print(f"Scanner: new pool detected, {name} ({symbol}) {token}")
-                                db.save_coin(token, name, symbol, 0, "0")
-                                await bus_mod.bus.scanner_to_auditor.put({
-                                    "mint": token, "name": name, "symbol": symbol,
-                                    "liquidity_usd": 0, "price_usd": "0", "pair": None
-                                })
-                LAST_BLOCK = current
-        except Exception as e:
-            print(f"Scanner error: {e}")
-        await asyncio.sleep(10)
+        await scan_once()
+        await asyncio.sleep(30)
