@@ -11,6 +11,8 @@ async def pipeline():
         address = coin.get("mint")
         name = coin.get("name", "Unknown")
         try:
+            if DEFAULT_SETTINGS.get("paused") or RUNTIME.get("paused"):
+                continue
             audit_result = await auditor.audit(address, coin)
             if not audit_result["passed"]:
                 continue

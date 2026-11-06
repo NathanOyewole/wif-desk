@@ -7,6 +7,7 @@ import bus as bus_mod
 # Uniswap V3 PoolCreated event signature
 POOL_CREATED_TOPIC = "0x783cca1c0412dd0d695e784568c96da2e9c22ff989357a2e8b1d9b2b4e6b7118"
 LAST_BLOCK = 0
+SEEN = set()
 
 async def get_latest_block():
     import httpx
@@ -33,6 +34,9 @@ def _push_token(token, pair=None):
     address = token.get("address")
     if not address:
         return None
+    if address.lower() in SEEN:
+        return None
+    SEEN.add(address.lower())
     price = token.get("priceUsd") or (pair or {}).get("priceUsd") or "0"
     liq = token.get("liquidity_usd") or (pair or {}).get("liquidity", {}).get("usd", 0)
     db.save_coin(address, name, symbol, liq, str(price))

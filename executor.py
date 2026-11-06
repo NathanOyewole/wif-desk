@@ -2,6 +2,8 @@ import asyncio, httpx, json, time
 from config import *
 import db
 
+SEEN_SIGNALS = set()
+
 async def send_telegram(chat_id, text, buttons=None):
     async with httpx.AsyncClient(timeout=15) as client:
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
@@ -39,6 +41,13 @@ async def execute(address, name, analyst_result, scanner_data):
     size_usd = round(raw_size, 2)
     stack_pct = round(size_usd / stack * 100, 1)
     score = analyst_result.get("score", 0)
+
+    from config import RUNTIME
+    if RUNTIME.get("paused"):
+        return {"agent": "executor", "mint": address, "status": "paused"}
+    if address.lower() in SEEN_SIGNALS:
+        return {"agent": "executor", "mint": address, "status": "duplicate"}
+    SEEN_SIGNALS.add(address.lower())
 
     # Never auto-execute live swaps from the pipeline; require explicit /trade confirm.
     if mode == "LIVE" and not settings.get("auto_live", False):

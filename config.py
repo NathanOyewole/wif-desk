@@ -21,3 +21,5 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 DEFAULT_SETTINGS = {"stack": 200.0, "mode": "PAPER", "min_liquidity": 1000, "min_pool_age": 10, "max_top10_pct": 25, "max_h1_change": 80, "stop_pct": 6, "trail_pct": 12, "trail_activate_pct": 20, "timeout_hours": 3, "executor_size_pct": 8, "min_trade_size": 10.0, "below_min_action": "bump", "analyst_mode": "rules"}
+
+RUNTIME = {"paused": False}

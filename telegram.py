@@ -171,7 +171,15 @@ async def handle_command(chat_id, text):
         await send_msg(chat_id, f"Bought {qty:.4f} {token[:8]}... at ${price:.6f} (${amount:.2f}){gate_note}\nCash left: ${db.get_wallet(chat_id):.2f}", buttons)
     elif cmd == "/close":
         if len(parts) < 2:
-            await send_msg(chat_id, "Usage: /close <number|address> [15|50|100]")
+            trades = db.get_trades(chat_id, "open")
+            if not trades:
+                await send_msg(chat_id, "No open positions.")
+                return
+            lines = ["Open positions:"]
+            for i, t in enumerate(trades, 1):
+                lines.append(f"{i}. {t['name']} · ${t['size_usd']:.2f} @ ${t['entry_price']:.6f}")
+            lines.append("\nClose with /close <number> [15|50|100]")
+            await send_msg(chat_id, "\n".join(lines))
             return
         token = _resolve_token(chat_id, parts[1])
         if not token:
@@ -217,9 +225,13 @@ async def handle_command(chat_id, text):
         else:
             await send_msg(chat_id, summary)
     elif cmd == "/pause":
-        await send_msg(chat_id, "Paused.")
+        from config import RUNTIME
+        RUNTIME["paused"] = True
+        await send_msg(chat_id, "Paused — no new trade signals will be pushed. /resume to continue.")
     elif cmd == "/resume":
-        await send_msg(chat_id, "Resumed.")
+        from config import RUNTIME
+        RUNTIME["paused"] = False
+        await send_msg(chat_id, "Resumed — signals active.")
     elif cmd == "/wallet":
         try:
             import wallet
@@ -259,7 +271,10 @@ async def handle_callback(cb):
             qty = size / price
             db.adjust_wallet(chat_id, -size)
             db.open_trade(chat_id, mint, mint[:8], price, qty, size, DEFAULT_SETTINGS.get("mode", "PAPER"))
-            await send_msg(chat_id, f"Position opened for {mint[:8]}... (${size:.2f} @ ${price:.6f})\nCash: ${db.get_wallet(chat_id):.2f}")
+            buttons = [[{"text": "Close 15%", "callback_data": f"close15:{mint}"},
+                        {"text": "Close 50%", "callback_data": f"close50:{mint}"},
+                        {"text": "Close All", "callback_data": f"closeall:{mint}"}]]
+            await send_msg(chat_id, f"Position opened for {mint[:8]}... (${size:.2f} @ ${price:.6f})\nCash: ${db.get_wallet(chat_id):.2f}", buttons)
     elif data.startswith("close15:") or data.startswith("close50:") or data.startswith("closeall:"):
         token = data.split(":", 1)[1]
         frac = {"close15:": 0.15, "close50:": 0.50, "closeall:": 1.0}[data.split(":",1)[0] + ":"]
