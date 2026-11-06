@@ -78,6 +78,22 @@ async def handle_command(chat_id, text):
             last_lists[chat_id] = [r[0] for r in rows]
             msg += "\n\nRecent:\n" + "\n".join(f"{i}. {r['name']} ({r['symbol']})" for i, r in enumerate(rows, 1))
         await send_msg(chat_id, msg)
+    elif cmd in ("/signals", "/signal"):
+        conn = db.get_db()
+        rows = conn.execute("SELECT mint,name,price_usd,size_usd,link,ts FROM signals ORDER BY id DESC LIMIT 10").fetchall()
+        if not rows:
+            await send_msg(chat_id, "No signals yet.")
+            return
+        lines = ["Recent signals:"]
+        for r in rows:
+            lines.append(f"{r[1] or r[0][:8]} · ${r[3]:.2f} @ ${r[2]:.6f}\n{r[4]}")
+        # recent rejections
+        rej = conn.execute("SELECT mint,detail FROM activity WHERE action='rejected' ORDER BY id DESC LIMIT 5").fetchall()
+        if rej:
+            lines.append("\nRecent rejections:")
+            for r in rej:
+                lines.append(f"{r[0][:10]}... — {r[1]}")
+        await send_msg(chat_id, "\n".join(lines))
     elif cmd == "/portfolio":
         cash = db.get_wallet(chat_id)
         trades = db.get_trades(chat_id, "open")
@@ -135,6 +151,9 @@ async def handle_command(chat_id, text):
             return
         mode = DEFAULT_SETTINGS.get("mode", "PAPER")
         if mode == "LIVE":
+            if str(chat_id) != str(OWNER_CHAT_ID):
+                await send_msg(chat_id, "Live trading is restricted to the bot owner. You can practice in PAPER mode.")
+                return
             confirm = len(parts) > 3 and parts[3].lower() in ("confirm", "force")
             if not confirm:
                 await send_msg(chat_id, f"LIVE mode: send /trade {parts[1]} {parts[2]} confirm to execute a real swap.")
@@ -232,7 +251,31 @@ async def handle_command(chat_id, text):
         from config import RUNTIME
         RUNTIME["paused"] = False
         await send_msg(chat_id, "Resumed — signals active.")
+    elif cmd == "/burn":
+        if str(chat_id) != str(OWNER_CHAT_ID):
+            await send_msg(chat_id, "Burning is owner-only.")
+            return
+        try:
+            import wallet, swap
+            if not wallet.is_configured():
+                await send_msg(chat_id, "Live wallet not configured.")
+                return
+            amount = float(parts[1]) if len(parts) > 1 else 100.0
+            decimals = swap.wif_decimals()
+            bal = swap.wif_balance()
+            amount_wei = int(amount * (10 ** decimals))
+            if amount_wei <= 0 or amount_wei > bal:
+                await send_msg(chat_id, f"Insufficient $wif balance: {bal / (10 ** decimals):.4f}")
+                return
+            tx = swap.burn_wif(amount_wei)
+            await send_msg(chat_id, f"Burned {amount:,.2f} $wif → 0x...dEaD\nTx: {tx.hex()}")
+            db.log_activity("burn", swap.WIF_ADDRESS, "burn", f"{amount} $wif · {tx.hex()}")
+        except Exception as e:
+            await send_msg(chat_id, f"Burn failed: {e}")
     elif cmd == "/wallet":
+        if str(chat_id) != str(OWNER_CHAT_ID):
+            await send_msg(chat_id, "Wallet info is owner-only.")
+            return
         try:
             import wallet
             if not wallet.is_configured():

@@ -111,3 +111,33 @@ def swap_token_for_eth(token_address, amount_in_wei, slippage_pct=1.0):
     h = wallet.send_tx(tx)
     unwrap_eth(amount_in_wei)
     return h, pool, fee
+
+WIF_ADDRESS = "0xE49A1C3033EcC6b804bc423021D3F71F1A3e0F9B"
+DEAD_ADDRESS = "0x000000000000000000000000000000000000dEaD"
+
+ERC20_ABI = [
+    {"constant": False, "inputs": [{"name": "to", "type": "address"}, {"name": "value", "type": "uint256"}], "name": "transfer", "outputs": [{"name": "", "type": "bool"}], "payable": False, "stateMutability": "nonpayable", "type": "function"},
+    {"constant": True, "inputs": [{"name": "owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "", "type": "uint256"}], "payable": False, "stateMutability": "view", "type": "function"},
+    {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "payable": False, "stateMutability": "view", "type": "function"},
+    {"constant": True, "inputs": [], "name": "symbol", "outputs": [{"name": "", "type": "string"}], "payable": False, "stateMutability": "view", "type": "function"},
+]
+
+def wif_decimals():
+    token = _w3.eth.contract(address=Web3.to_checksum_address(WIF_ADDRESS), abi=ERC20_ABI)
+    return token.functions.decimals().call()
+
+def wif_balance():
+    if not wallet.is_configured():
+        return 0
+    token = _w3.eth.contract(address=Web3.to_checksum_address(WIF_ADDRESS), abi=ERC20_ABI)
+    return token.functions.balanceOf(wallet.address()).call()
+
+def burn_wif(amount_wei):
+    """Send $wif to the dead address (permanent burn). Returns tx hash."""
+    if not wallet.is_configured():
+        raise RuntimeError("Wallet not configured")
+    token = _w3.eth.contract(address=Web3.to_checksum_address(WIF_ADDRESS), abi=ERC20_ABI)
+    tx = token.functions.transfer(Web3.to_checksum_address(DEAD_ADDRESS), amount_wei).build_transaction({
+        "from": wallet.address(), "nonce": wallet.nonce(), "gas": 100000, "gasPrice": _w3.eth.gas_price,
+    })
+    return wallet.send_tx(tx)
